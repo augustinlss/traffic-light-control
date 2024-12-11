@@ -32,7 +32,8 @@ static sem_t semaphores[4][4];
 /*
  * Intersection mutex for the basic solution
  */
-pthread_mutex_t basic_mutex;
+pthread_mutex_t basic_mutex = PTHREAD_MUTEX_INITIALIZER;
+// static bool isTerm[4][4];
 
 /*
  * supply_arrivals()
@@ -56,6 +57,7 @@ static void* supply_arrivals()
     // store the new arrival in curr_arrivals
     curr_arrivals[arrival.side][arrival.direction][num_curr_arrivals[arrival.side][arrival.direction]] = arrival;
     num_curr_arrivals[arrival.side][arrival.direction] += 1;
+
     // increment the semaphore for the traffic light that the arrival is for
     sem_post(&semaphores[arrival.side][arrival.direction]);
   }
@@ -89,26 +91,25 @@ static void* manage_light(void* arg)
   Side side = lightArgs->side;
   Direction dir = lightArgs->dir;
 
+  free(arg);
+
   int next_car = 0;
 
   while (true) {
-    if (get_time_passed() >= END_TIME) {
-      break;
-    }
-
-    if (sem_wait(&semaphores[side][dir] == -1) && errno == EINTR) {
+    if (sem_wait(&semaphores[side][dir]) == -1 && errno == EINTR) {
       continue;
     }
 
-    if (get_time_passed() >= END_TIME) {
+    if (get_time_passed() >= END_TIME || next_car == 20) {
       break;
     }
 
-    if (next_car >= 20 || curr_arrivals[side][dir][next_car].id == -1) {
-      continue; // Or Break
+    Arrival car = curr_arrivals[side][dir][next_car];
+
+    if (car.direction == -1) {
+      break;
     }
 
-    Arrival car = curr_arrivals[side][dir][next_car];
     next_car++;
 
     pthread_mutex_lock(&basic_mutex);
@@ -143,10 +144,60 @@ int main(int argc, char * argv[])
   start_time();
   
   // TODO: create a thread per traffic light that executes manage_light
+  pthread_t traffic_lights[4][4];
+
+  for (int side = NORTH; side <= WEST; side++) {
+    for (int dir = LEFT; dir <= UTURN; dir++) {
+      if (side == NORTH) {
+        continue;
+      }
+
+      if (dir == UTURN && side != SOUTH) {
+        continue;
+      }
+
+      LightArgs* args = malloc(sizeof(LightArgs));
+      args->side = side;
+      args->dir = dir;
+
+      if (pthread_create(&traffic_lights[side][dir], 
+                        NULL, 
+                        manage_light, 
+                        args) != 0) {
+                          fprintf(stderr, "Error creating thread for side %d, dir %d\n", side, dir);
+                          free(args);
+                        }
+    }
+  }
 
   // TODO: create a thread that executes supply_arrivals
+  pthread_t supply_thread;
+  pthread_create(&supply_thread, NULL, supply_arrivals, NULL);
 
   // TODO: wait for all threads to finish
+  pthread_join(supply_thread, NULL);
+
+  // I guess just in case we havent hit end time we should right
+  while (get_time_passed() <= END_TIME) {
+    usleep(10000);
+  }
+
+  for (int side = NORTH; side <= WEST; side++) {
+    for (int dir = LEFT; dir <= UTURN; dir++) {
+      if (side == NORTH) {
+        continue;
+      }
+
+      if (dir == UTURN && side != SOUTH) {
+        continue;
+      }
+
+      sem_post(&semaphores[side][dir]);
+      if (pthread_join(traffic_lights[side][dir], NULL) != 0) {
+        fprintf(stderr, "Error creating thread for side %d, dir %d\n", side, dir);
+      }
+    }
+  }
 
   // destroy semaphores
   for (int i = 0; i < 4; i++)
@@ -156,4 +207,6 @@ int main(int argc, char * argv[])
       sem_destroy(&semaphores[i][j]);
     }
   }
+
+  pthread_mutex_destroy(&basic_mutex);
 }
