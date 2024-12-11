@@ -129,16 +129,36 @@ int main(int argc, char * argv[])
   // TODO: create a thread per traffic light that executes manage_light
   pthread_t traffic_lights[4][4];// todo
  
+  // for (int i = 0; i < NUM_SIDE; i++) {
+  //   for (int j = 0; j < NUM_DIRECTION; j++)
+  //   {
+  //     int* temp = malloc(2 * sizeof(int));
+  //     temp[0] = i;
+  //     temp[1] = j;
+  //     isTerminated[i][j] = false;
+  //     pthread_create (&traffic_lights[i][j], NULL, manage_light, temp);
+  //   }
+  // }
+
   for (int i = 0; i < NUM_SIDE; i++) {
     for (int j = 0; j < NUM_DIRECTION; j++)
     {
-      int* temp = malloc(2 * sizeof(int));
-      temp[0] = i;
-      temp[1] = j;
-      isTerminated[i][j] = false;
-      pthread_create (&traffic_lights[i][j], NULL, manage_light, temp);
+      if (i == 0) {
+        continue;
+      }
+      if (i == 2 || j != 3) {
+        int* temp = malloc(2 * sizeof(int));
+        temp[0] = i;
+        temp[1] = j;
+        isTerminated[i][j] = false;
+        pthread_create (&traffic_lights[i][j], NULL, manage_light, temp);
+      }      
     }
   }
+
+  // todo
+  // printf("From the intersection, all lights has been created\n");
+  // end
 
   // TODO: create a thread that executes supply_arrivals
   pthread_t arrival_t;
@@ -146,12 +166,26 @@ int main(int argc, char * argv[])
 
   // TODO: wait for all threads to finish
   pthread_join(arrival_t, NULL);
+  // for (int i = 0; i < NUM_SIDE; i++)
+  // {
+  //   for (int j = 0; j < NUM_DIRECTION; j++) {
+  //     isTerminated[i][j] = true;
+  //     sem_post(&semaphores[i][j]);
+  //     pthread_join(traffic_lights[i][j], NULL);
+  //   }
+  // }
+
   for (int i = 0; i < NUM_SIDE; i++)
   {
     for (int j = 0; j < NUM_DIRECTION; j++) {
-      isTerminated[i][j] = true;
-      sem_post(&semaphores[i][j]);
-      pthread_join(traffic_lights[i][j], NULL);
+      if (i == 0) {
+        continue;
+      }
+      if (i == 2 || j != 3) {
+        isTerminated[i][j] = true;
+        sem_post(&semaphores[i][j]);
+        pthread_join(traffic_lights[i][j], NULL);
+      }      
     }
   }
   
