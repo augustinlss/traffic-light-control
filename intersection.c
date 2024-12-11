@@ -30,6 +30,11 @@ static Arrival curr_arrivals[4][4][20];
 static sem_t semaphores[4][4];
 
 /*
+ * Intersection mutex for the basic solution
+ */
+pthread_mutex_t basic_mutex;
+
+/*
  * supply_arrivals()
  *
  * A function for supplying arrivals to the intersection
@@ -64,6 +69,12 @@ static void* supply_arrivals()
  *
  * A function that implements the behaviour of a traffic light
  */
+
+typedef struct {
+  Side side;
+  Direction dir;
+} LightArgs;
+
 static void* manage_light(void* arg)
 {
   // TODO:
@@ -74,6 +85,44 @@ static void* manage_light(void* arg)
   //  - sleep for CROSS_TIME seconds
   //  - make the traffic light turn red
   //  - unlock the right mutex(es)
+  LightArgs* lightArgs = (LightArgs*)arg;
+  Side side = lightArgs->side;
+  Direction dir = lightArgs->dir;
+
+  int next_car = 0;
+
+  while (true) {
+    if (get_time_passed() >= END_TIME) {
+      break;
+    }
+
+    if (sem_wait(&semaphores[side][dir] == -1) && errno == EINTR) {
+      continue;
+    }
+
+    if (get_time_passed() >= END_TIME) {
+      break;
+    }
+
+    if (next_car >= 20 || curr_arrivals[side][dir][next_car].id == -1) {
+      continue; // Or Break
+    }
+
+    Arrival car = curr_arrivals[side][dir][next_car];
+    next_car++;
+
+    pthread_mutex_lock(&basic_mutex);
+
+    int t_green = get_time_passed();
+    printf("traffic light %d %d turns green at time %d for car %d\n", side, dir, t_green, car.id);
+
+    sleep(CROSS_TIME);
+
+    int t_red = get_time_passed();
+    printf("traffic light %d %d turns red at time %d for car %d\n", side, dir, t_red, car.id);
+
+    pthread_mutex_unlock(&basic_mutex);
+  }
 
   return(0);
 }
