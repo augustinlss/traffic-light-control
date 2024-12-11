@@ -33,7 +33,84 @@ static sem_t semaphores[4][4];
  * Intersection mutex for the basic solution
  */
 pthread_mutex_t basic_mutex = PTHREAD_MUTEX_INITIALIZER;
-// static bool isTerm[4][4];
+
+static pthread_mutex_t conflict_mutexes[7] = {
+  PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_MUTEX_INITIALIZER
+};
+
+// 7 conflict sets 
+static int conflict_sets[7][3] = {
+    {3, 6, 8},   // SOUTH STRAIGHT conflicts with EAST STRAIGHT and WEST LEFT
+    {3, 5, 9},   // SOUTH STRAIGHT conflicts with EAST LEFT and WEST STRAIGHT
+    {0, 1, 5},   // WEST RIGHT conflicts with EAST LEFT and SOUTH LEFT
+    {3, 7, 8},   // SOUTH STRAIGHT conflicts with WEST LEFT and WEST RIGHT
+    {2, 5, 9},   // SOUTH RIGHT conflicts with EAST LEFT and WEST STRAIGHT
+    {2, 6, 8},   // SOUTH RIGHT conflicts with EAST STRAIGHT and WEST LEFT
+    {4, 9, -1}   // EAST RIGHT conflicts with WEST STRAIGHT
+};
+
+bool set_contains(const int set[], int value) {
+    for (int j = 0; j < 3; j++) {
+        if (set[j] == value || set[j] == -1) {
+            break;
+        }
+        if (set[j] == value) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void lock_conflict_mutexes(int path_id) {
+    for (int i = 0; i < 7; i++) {
+        if (set_contains(conflict_sets[i], path_id)) {
+            pthread_mutex_lock(&conflict_mutexes[i]);
+        }
+    }
+}
+
+static void unlock_conflict_mutexes(int path_id) {
+    for (int i = 0; i < 7; i++) {
+        if (set_contains(conflict_sets[i], path_id)) {
+            pthread_mutex_unlock(&conflict_mutexes[i]);
+        }
+    }
+}
+
+int get_path_id(Side side, Direction dir) {
+    switch(side) {
+        case SOUTH:
+            switch(dir) {
+                case UTURN: return 1;
+                case LEFT: return 2;
+                case STRAIGHT: return 3;
+                case RIGHT: return 4;
+            }
+        case EAST:
+            switch(dir) {
+                case LEFT: return 5;
+                case STRAIGHT: return 6;
+                case RIGHT: return 7;
+                case UTURN: return -1;
+            }
+        case WEST:
+            switch(dir) {
+                case LEFT: return 8;
+                case STRAIGHT: return 9;
+                case RIGHT: return 0;
+                case UTURN: return -1;
+            }
+        default:
+            return -1; // Shouldnt hit this
+    }
+}
+
 
 /*
  * supply_arrivals()
@@ -112,7 +189,10 @@ static void* manage_light(void* arg)
 
     next_car++;
 
-    pthread_mutex_lock(&basic_mutex);
+    // pthread_mutex_lock(&basic_mutex);
+    int path_id = get_path_id(side, dir);
+
+    lock_conflict_mutexes(path_id);
 
     int t_green = get_time_passed();
     printf("traffic light %d %d turns green at time %d for car %d\n", side, dir, t_green, car.id);
@@ -120,9 +200,11 @@ static void* manage_light(void* arg)
     sleep(CROSS_TIME);
 
     int t_red = get_time_passed();
-    printf("traffic light %d %d turns red at time %d for car %d\n", side, dir, t_red, car.id);
+    printf("traffic light %d %d turns red at time %d\n", side, dir, t_red);
 
-    pthread_mutex_unlock(&basic_mutex);
+    // pthread_mutex_unlock(&basic_mutex);
+
+    unlock_conflict_mutexes(path_id);
   }
 
   return(0);
@@ -209,4 +291,8 @@ int main(int argc, char * argv[])
   }
 
   pthread_mutex_destroy(&basic_mutex);
+
+  for (int i = 0; i < 7; i++) {
+    pthread_mutex_destroy(&conflict_mutexes[i]);
+  }
 }
