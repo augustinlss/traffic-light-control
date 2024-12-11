@@ -33,7 +33,7 @@ static Arrival curr_arrivals[4][4][20];
 static sem_t semaphores[4][4];
 
 static pthread_mutex_t      mutex          = PTHREAD_MUTEX_INITIALIZER;
-static bool isTerminated[4][4];
+// static bool isTerminated[4][4];
 
 /*
  * supply_arrivals()
@@ -86,25 +86,57 @@ static void* manage_light(void* arg)
   int side = argi[0];
   int direction = argi[1];
   free(arg);
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  int elapsed_time = get_time_passed();
+  ts.tv_sec += (END_TIME - elapsed_time);
 
-  while(true) {
-    sem_wait(&semaphores[side][direction]);
-    if (isTerminated[side][direction]) {
+  // while(elapsed_time <= 40) {
+  //   sem_wait(&semaphores[side][direction]);
+  //   if (isTerminated[side][direction]) {
+  //     break;
+  //   }
+
+  //   pthread_mutex_lock(&mutex);
+  //   Arrival car = curr_arrivals[side][direction][next_car];
+  //   int time = get_time_passed();
+  //   printf("traffic light %d %d turns green at time %d for car %d\n", side, direction, time, car.id);
+  //   sleep(CROSS_TIME);
+
+  //   time = get_time_passed();
+  //   printf("traffic light %d %d turns red at time %d\n", side, direction, time);
+  //   next_car++;
+  //   if (next_car >= 20) {
+  //     break;
+  //   }
+  //   pthread_mutex_unlock (&mutex);
+  // }
+
+  while(elapsed_time <= END_TIME) {
+    int result = sem_timedwait(&semaphores[side][direction], &ts);
+    if (result == -1 && errno == ETIMEDOUT) {
+      // todo
+      // elapsed_time = get_time_passed();
+      // printf("From thread side: %d direction: %d, the thread terminate at: %d\n", side, direction, elapsed_time);
+      // end
       break;
     }
 
     pthread_mutex_lock(&mutex);
     Arrival car = curr_arrivals[side][direction][next_car];
-    int time = get_time_passed();
-    printf("traffic light %d %d turns green at time %d for car %d\n", side, direction, time, car.id);
+    elapsed_time = get_time_passed();
+    printf("traffic light %d %d turns green at time %d for car %d\n", side, direction, elapsed_time, car.id);
     sleep(CROSS_TIME);
 
-    time = get_time_passed();
-    printf("traffic light %d %d turns red at time %d\n", side, direction, time);
+    elapsed_time = get_time_passed();
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += (END_TIME - elapsed_time); //update the time countdown
+    printf("traffic light %d %d turns red at time %d\n", side, direction, elapsed_time);
     next_car++;
     if (next_car >= 20) {
       break;
     }
+    
     pthread_mutex_unlock (&mutex);
   }
 
@@ -150,7 +182,7 @@ int main(int argc, char * argv[])
         int* temp = malloc(2 * sizeof(int));
         temp[0] = i;
         temp[1] = j;
-        isTerminated[i][j] = false;
+        // isTerminated[i][j] = false;
         pthread_create (&traffic_lights[i][j], NULL, manage_light, temp);
       }      
     }
@@ -182,15 +214,13 @@ int main(int argc, char * argv[])
         continue;
       }
       if (i == 2 || j != 3) {
-        isTerminated[i][j] = true;
-        sem_post(&semaphores[i][j]);
+        // isTerminated[i][j] = true;
+        // sem_post(&semaphores[i][j]);
         pthread_join(traffic_lights[i][j], NULL);
       }      
     }
   }
   
-
-
   // destroy semaphores
   for (int i = 0; i < 4; i++)
   {
