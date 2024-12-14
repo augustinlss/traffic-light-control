@@ -32,8 +32,115 @@ static Arrival curr_arrivals[4][4][20];
  */
 static sem_t semaphores[4][4];
 
-static pthread_mutex_t      mutex          = PTHREAD_MUTEX_INITIALIZER;
-// static bool isTerminated[4][4];
+// static pthread_mutex_t      mutex          = PTHREAD_MUTEX_INITIALIZER;
+
+typedef struct
+{
+  int block_length;
+  int* block_side;
+  int* block_direction;
+}BlockList;
+
+static pthread_mutex_t mutex_side_direction[NUM_SIDE][NUM_DIRECTION];
+
+static void initial_mutexex() {
+  for (int side = 0; side < NUM_SIDE; side++) {
+    for (int direction = 0; direction < NUM_DIRECTION; direction++) {
+      pthread_mutex_init(&mutex_side_direction[side][direction], NULL);
+
+      // todo
+      // printf("mutex(%d, %d):%p\n", side, direction, (void*)&mutex_side_direction[side][direction]);
+      // end
+    }
+  }
+}
+
+const BlockList blockLists[NUM_SIDE][NUM_DIRECTION] = {
+  [1][0] = {5, (int[]){2,2,2,3,3} , (int[]){0,1,3,1,2}},
+  [1][1] = {3, (int[]){2,2,3}     , (int[]){0,1,0}},
+  [1][2] = {2, (int[]){2,3}       , (int[]){1,0}},
+  [2][0] = {4, (int[]){1,1,3,3}   , (int[]){0,1,0,1}},
+  [2][1] = {5, (int[]){1,1,1,3,3} , (int[]){0,1,2,0,1}},
+  [2][2] = {1, (int[]){3}         , (int[]){1}},
+  [2][3] = {2, (int[]){1,3}       , (int[]){0,2}},
+  [3][0] = {4, (int[]){1,1,2,2}   , (int[]){1,2,0,1}},
+  [3][1] = {4, (int[]){1,2,2,2}   , (int[]){0,0,1,2}},
+  [3][2] = {2, (int[]){1,2}       , (int[]){0,3}}
+};
+
+static void sortLockOrder(int side, int direction, BlockList *lockMutexOrder){
+  BlockList blockList = blockLists[side][direction];
+  int original_len = blockList.block_length;
+  lockMutexOrder->block_length = original_len + 1;
+  lockMutexOrder->block_side = malloc(lockMutexOrder->block_length * sizeof(int));
+  lockMutexOrder->block_direction = malloc(lockMutexOrder->block_length * sizeof(int));
+
+  int original_location = 0;
+  int target_location = 0;
+
+  for (; original_location < original_len; original_location++, target_location++)
+  {
+    if (side < blockList.block_side[original_location]) {      
+      break;
+    }
+    lockMutexOrder->block_side[target_location] = blockList.block_side[original_location];
+    lockMutexOrder->block_direction[target_location] = blockList.block_direction[original_location];
+  }
+  lockMutexOrder->block_side[target_location] = side;
+  lockMutexOrder->block_direction[target_location] = direction;
+  target_location++;
+  for (; original_location < blockList.block_length; original_location++, target_location++)
+  {    
+    lockMutexOrder->block_side[target_location] = blockList.block_side[original_location];
+    lockMutexOrder->block_direction[target_location] = blockList.block_direction[original_location];
+  }
+
+  // todo
+  // printf("Thread (%d,%d) contains mutextes index: ", side, direction);
+  // for (int i = 0; i < lockMutexOrder->block_length; i++)
+  // {
+  //   printf("(%d, %d) ", lockMutexOrder->block_side[i], lockMutexOrder->block_direction[i]);
+  // }
+  // printf("\n");
+  // end
+}
+
+// static pthread_mutex_t* getMutexList(int side, int direction) {
+//   BlockList lockMutexOrder;
+//   sortLockOrder(side, direction, &lockMutexOrder);
+//   int length = lockMutexOrder.block_length;
+
+//   pthread_mutex_t* mutexList = malloc(length * sizeof(pthread_mutex_t));
+//   for (int i = 0; i < length; i++)
+//   {
+//     int mutex_side = lockMutexOrder.block_side[i];
+//     int mutex_direction = lockMutexOrder.block_direction[i];
+//     mutexList[i] = mutex_side_direction[mutex_side][mutex_direction];
+//   }
+//   free(lockMutexOrder.block_side);
+//   free(lockMutexOrder.block_direction); 
+//   return mutexList;
+// }
+
+static void getMutexList(int side, int direction, pthread_mutex_t* mutexList) {
+  BlockList lockMutexOrder;
+  sortLockOrder(side, direction, &lockMutexOrder);
+  int length = lockMutexOrder.block_length;
+
+  // pthread_mutex_t* mutexList = malloc(length * sizeof(pthread_mutex_t));
+  for (int i = 0; i < length; i++)
+  {
+    int mutex_side = lockMutexOrder.block_side[i];
+    int mutex_direction = lockMutexOrder.block_direction[i];
+    mutexList[i] = mutex_side_direction[mutex_side][mutex_direction];
+    // todo
+    // printf("Thread (%d, %d) add mutex(%d, %d) to list: %p\n", side, direction, mutex_side, mutex_direction, (void*)&mutex_side_direction[mutex_side][mutex_direction]);    
+    // end
+  }
+  free(lockMutexOrder.block_side);
+  free(lockMutexOrder.block_direction); 
+  // return mutexList;
+}
 
 /*
  * supply_arrivals()
@@ -86,43 +193,64 @@ static void* manage_light(void* arg)
   int side = argi[0];
   int direction = argi[1];
   free(arg);
+
+  // int num_mutex = blockLists[side][direction].block_length + 1;
+  // pthread_mutex_t *list_mutex = malloc(num_mutex * sizeof(pthread_mutex_t));
+  // getMutexList(side, direction, list_mutex);
+  
+  BlockList blockOrder;
+  sortLockOrder(side, direction, &blockOrder);
+  int num_mutex = blockOrder.block_length;
+  int *lockOrderSide = blockOrder.block_side;
+  int *lockOrderDirection = blockOrder.block_direction;
+
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   int elapsed_time = get_time_passed();
   ts.tv_sec += (END_TIME - elapsed_time);
 
-  // while(elapsed_time <= 40) {
-  //   sem_wait(&semaphores[side][direction]);
-  //   if (isTerminated[side][direction]) {
-  //     break;
-  //   }
-
-  //   pthread_mutex_lock(&mutex);
-  //   Arrival car = curr_arrivals[side][direction][next_car];
-  //   int time = get_time_passed();
-  //   printf("traffic light %d %d turns green at time %d for car %d\n", side, direction, time, car.id);
-  //   sleep(CROSS_TIME);
-
-  //   time = get_time_passed();
-  //   printf("traffic light %d %d turns red at time %d\n", side, direction, time);
-  //   next_car++;
-  //   if (next_car >= 20) {
-  //     break;
-  //   }
-  //   pthread_mutex_unlock (&mutex);
-  // }
-
   while(elapsed_time <= END_TIME) {
     int result = sem_timedwait(&semaphores[side][direction], &ts);
+    // todo
+    int checktime = get_time_passed();
+    printf("Thread (%d, %d) wakes at: %d\n", side, direction, checktime);
+    // end
     if (result == -1 && errno == ETIMEDOUT) {
       // todo
-      // elapsed_time = get_time_passed();
-      // printf("From thread side: %d direction: %d, the thread terminate at: %d\n", side, direction, elapsed_time);
+      elapsed_time = get_time_passed();
+      printf("Thread (%d, %d) terminates at: %d\n", side, direction, elapsed_time);
       // end
       break;
     }
+    
+    for(int i = 0; i < num_mutex; i++) {
+      // pthread_mutex_lock(&list_mutex[i]);  
 
-    pthread_mutex_lock(&mutex);
+      int mutex_side = lockOrderSide[i];
+      int mutex_direction = lockOrderDirection[i];
+      // todo
+      checktime = get_time_passed();
+      printf("Thread (%d, %d) try to lock %dth m(%d, %d) at: %d\n", side, direction, i, mutex_side, mutex_direction, checktime);
+      int result = pthread_mutex_trylock(&mutex_side_direction[mutex_side][mutex_direction]);
+      if (result == 0) {          
+          printf("In (%d, %d), m(%d, %d) is unlocked.\n", side, direction, mutex_side, mutex_direction);
+          pthread_mutex_unlock(&mutex_side_direction[mutex_side][mutex_direction]);
+      } else if (result == EBUSY) {          
+          printf("In (%d, %d), m(%d, %d) is LOCKED.\n", side, direction, mutex_side, mutex_direction);
+      } else {          
+          perror("Error checking mutex state");
+      }
+      // end
+
+      pthread_mutex_lock(&mutex_side_direction[mutex_side][mutex_direction]);
+
+      // todo
+      checktime = get_time_passed();
+      printf("Thread (%d, %d) locked the %dth mutex at: %d\n", side, direction, i, checktime);
+      printf("Thread (%d, %d) locked mutex: (%d, %d)\n", side, direction, mutex_side, mutex_direction);
+      // end 
+    }
+
     Arrival car = curr_arrivals[side][direction][next_car];
     elapsed_time = get_time_passed();
     printf("traffic light %d %d turns green at time %d for car %d\n", side, direction, elapsed_time, car.id);
@@ -137,9 +265,18 @@ static void* manage_light(void* arg)
       break;
     }
     
-    pthread_mutex_unlock (&mutex);
+    // pthread_mutex_unlock (&mutex);
+    for(int i = 0; i < num_mutex; i++) {
+      int mutex_side = lockOrderSide[i];
+      int mutex_direction = lockOrderDirection[i];
+      pthread_mutex_unlock(&mutex_side_direction[mutex_side][mutex_direction]);
+    }
   }
 
+  // free(list_mutex);
+
+  free(blockOrder.block_side);
+  free(blockOrder.block_direction);
   return(0);
 }
 
@@ -154,6 +291,7 @@ int main(int argc, char * argv[])
       sem_init(&semaphores[i][j], 0, 0);
     }
   }
+  initial_mutexex();
 
   // start the timer
   start_time();
@@ -232,3 +370,23 @@ int main(int argc, char * argv[])
 
   return 0;
 }
+
+//Todo test main()
+// int main(int argc, char const *argv[])
+// {
+//   int side1 = 3;
+//   int direction1 = 2;
+//   BlockList test1;
+//   sortLockOrder(side1, direction1, &test1);
+//   for (int i = 0; i < test1.block_length; i++)
+//   {
+//     printf("(%d, %d) ", test1.block_side[i], test1.block_direction[i]);
+//   }
+//   printf("\n");
+  
+//   free(test1.block_side);
+//   free(test1.block_direction);
+//   return 0;
+// }
+
+// end
