@@ -81,63 +81,39 @@ static void* manage_light(void* arg)
   //  - sleep for CROSS_TIME seconds
   //  - make the traffic light turn red
   //  - unlock the right mutex(es)
-  int next_car = 0;  
+  int next_car = 0;  //keep track of which car in the corresponding array shall be handled next
   int *argi = (int*)arg;
   int side = argi[0];
   int direction = argi[1];
   free(arg);
-  struct timespec ts;
+  struct timespec ts; 
   clock_gettime(CLOCK_REALTIME, &ts);
-  int elapsed_time = get_time_passed();
+  int elapsed_time = get_time_passed(); //keep track of the time this thread has been activated.
   ts.tv_sec += (END_TIME - elapsed_time);
+  
 
-  // while(elapsed_time <= 40) {
-  //   sem_wait(&semaphores[side][direction]);
-  //   if (isTerminated[side][direction]) {
-  //     break;
-  //   }
-
-  //   pthread_mutex_lock(&mutex);
-  //   Arrival car = curr_arrivals[side][direction][next_car];
-  //   int time = get_time_passed();
-  //   printf("traffic light %d %d turns green at time %d for car %d\n", side, direction, time, car.id);
-  //   sleep(CROSS_TIME);
-
-  //   time = get_time_passed();
-  //   printf("traffic light %d %d turns red at time %d\n", side, direction, time);
-  //   next_car++;
-  //   if (next_car >= 20) {
-  //     break;
-  //   }
-  //   pthread_mutex_unlock (&mutex);
-  // }
-
-  while(elapsed_time <= END_TIME) {
+  while(elapsed_time <= END_TIME && next_car < 20) {
+    // once the notification from the corresponding semaphore is received, it can wake up,
+    // instead of constantly checking if there are new cars in the array.
     int result = sem_timedwait(&semaphores[side][direction], &ts);
     if (result == -1 && errno == ETIMEDOUT) {
-      // todo
-      // elapsed_time = get_time_passed();
-      // printf("From thread side: %d direction: %d, the thread terminate at: %d\n", side, direction, elapsed_time);
-      // end
+      // if this thread has been run for END_TIME, the while loop will terminate
       break;
     }
 
-    pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&mutex);   // lock the intersection such that no other cars can cross
     Arrival car = curr_arrivals[side][direction][next_car];
     elapsed_time = get_time_passed();
     printf("traffic light %d %d turns green at time %d for car %d\n", side, direction, elapsed_time, car.id);
     sleep(CROSS_TIME);
 
     elapsed_time = get_time_passed();
-    clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += (END_TIME - elapsed_time); //update the time countdown
+    clock_gettime(CLOCK_REALTIME, &ts); 
+    ts.tv_sec += (END_TIME - elapsed_time); //update the time countdown for this thread
     printf("traffic light %d %d turns red at time %d\n", side, direction, elapsed_time);
     next_car++;
-    if (next_car >= 20) {
-      break;
-    }
     
-    pthread_mutex_unlock (&mutex);
+    pthread_mutex_unlock (&mutex); //unlock the intersection such that other cars can cross
   }
 
   return(0);
@@ -159,38 +135,22 @@ int main(int argc, char * argv[])
   start_time();
   
   // TODO: create a thread per traffic light that executes manage_light
-  pthread_t traffic_lights[4][4];// todo
+  pthread_t traffic_lights[4][4]; 
  
-  // for (int i = 0; i < NUM_SIDE; i++) {
-  //   for (int j = 0; j < NUM_DIRECTION; j++)
-  //   {
-  //     int* temp = malloc(2 * sizeof(int));
-  //     temp[0] = i;
-  //     temp[1] = j;
-  //     isTerminated[i][j] = false;
-  //     pthread_create (&traffic_lights[i][j], NULL, manage_light, temp);
-  //   }
-  // }
-
   for (int i = 0; i < NUM_SIDE; i++) {
     for (int j = 0; j < NUM_DIRECTION; j++)
     {
       if (i == 0) {
-        continue;
+        continue;   //skip the north side
       }
-      if (i == 2 || j != 3) {
+      if (i == 2 || j != 3) {   //for other sides, only south can have uturn
         int* temp = malloc(2 * sizeof(int));
         temp[0] = i;
-        temp[1] = j;
-        // isTerminated[i][j] = false;
+        temp[1] = j;        
         pthread_create (&traffic_lights[i][j], NULL, manage_light, temp);
       }      
     }
   }
-
-  // todo
-  // printf("From the intersection, all lights has been created\n");
-  // end
 
   // TODO: create a thread that executes supply_arrivals
   pthread_t arrival_t;
@@ -198,24 +158,14 @@ int main(int argc, char * argv[])
 
   // TODO: wait for all threads to finish
   pthread_join(arrival_t, NULL);
-  // for (int i = 0; i < NUM_SIDE; i++)
-  // {
-  //   for (int j = 0; j < NUM_DIRECTION; j++) {
-  //     isTerminated[i][j] = true;
-  //     sem_post(&semaphores[i][j]);
-  //     pthread_join(traffic_lights[i][j], NULL);
-  //   }
-  // }
-
+  
   for (int i = 0; i < NUM_SIDE; i++)
   {
     for (int j = 0; j < NUM_DIRECTION; j++) {
       if (i == 0) {
         continue;
       }
-      if (i == 2 || j != 3) {
-        // isTerminated[i][j] = true;
-        // sem_post(&semaphores[i][j]);
+      if (i == 2 || j != 3) {        
         pthread_join(traffic_lights[i][j], NULL);
       }      
     }
