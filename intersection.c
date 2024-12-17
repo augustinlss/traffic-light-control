@@ -44,17 +44,6 @@ static pthread_mutex_t conflict_mutexes[7] = {
   PTHREAD_MUTEX_INITIALIZER
 };
 
-// 7 conflict sets 
-// static int conflict_sets[7][3] = {
-//     {3, 6, 8},   // SOUTH STRAIGHT conflicts with EAST STRAIGHT and WEST LEFT
-//     {3, 5, 9},   // SOUTH STRAIGHT conflicts with EAST LEFT and WEST STRAIGHT
-//     {0, 1, 5},   // WEST RIGHT conflicts with EAST LEFT and SOUTH LEFT
-//     {3, 7, 8},   // SOUTH STRAIGHT conflicts with WEST LEFT and WEST RIGHT
-//     {2, 5, 9},   // SOUTH RIGHT conflicts with EAST LEFT and WEST STRAIGHT
-//     {2, 6, 8},   // SOUTH RIGHT conflicts with EAST STRAIGHT and WEST LEFT
-//     {4, 9, -1}   // EAST RIGHT conflicts with WEST STRAIGHT
-// };
-
 static int conflict_sets[7][3] = {
     {3, 5, 9},   // SOUTH STRAIGHT conflicts with EAST STRAIGHT and WEST LEFT
     {3, 8, 7},   // SOUTH STRAIGHT conflicts with EAST LEFT and WEST STRAIGHT
