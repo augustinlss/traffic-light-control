@@ -34,6 +34,9 @@ static sem_t semaphores[4][4];
  */
 pthread_mutex_t basic_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/**
+ * Mutexes for 7 conflict zones
+ */
 static pthread_mutex_t conflict_mutexes[7] = {
   PTHREAD_MUTEX_INITIALIZER,
   PTHREAD_MUTEX_INITIALIZER,
@@ -44,6 +47,9 @@ static pthread_mutex_t conflict_mutexes[7] = {
   PTHREAD_MUTEX_INITIALIZER
 };
 
+/**
+ * 7 conflict zones, one lane from each side.
+ */
 static int conflict_sets[7][3] = {
     {3, 5, 9},   // SOUTH STRAIGHT conflicts with EAST STRAIGHT and WEST LEFT
     {3, 8, 7},   // SOUTH STRAIGHT conflicts with EAST LEFT and WEST STRAIGHT
@@ -54,6 +60,9 @@ static int conflict_sets[7][3] = {
     {0, 1, 5}   // EAST RIGHT conflicts with WEST STRAIGHT
 };
 
+/**
+ * Check if the lane is contained in this conflict zone.
+ */
 bool set_contains(const int set[], int value) {
     for (int j = 0; j < 3; j++) {
         if (set[j] == -1) {
@@ -82,6 +91,9 @@ static void unlock_conflict_mutexes(int path_id) {
     }
 }
 
+/**
+ * map from the (side, direction) -> the lane label. Details see the report.
+ */
 int get_path_id(Side side, Direction dir) {
     switch(side) {
         case SOUTH:
@@ -155,14 +167,6 @@ typedef struct {
 
 static void* manage_light(void* arg)
 {
-  // TODO:
-  // while not all arrivals have been handled, repeatedly:
-  //  - wait for an arrival using the semaphore for this traffic light
-  //  - lock the right mutex(es)
-  //  - make the traffic light turn green
-  //  - sleep for CROSS_TIME seconds
-  //  - make the traffic light turn red
-  //  - unlock the right mutex(es)
   LightArgs* lightArgs = (LightArgs*)arg;
   Side side = lightArgs->side;
   Direction dir = lightArgs->dir;
@@ -224,7 +228,7 @@ int main(int argc, char * argv[])
   // start the timer
   start_time();
   
-  // TODO: create a thread per traffic light that executes manage_light
+  // create a thread per traffic light that executes manage_light
   pthread_t traffic_lights[4][4];
 
   for (int side = NORTH; side <= WEST; side++) {
@@ -251,14 +255,14 @@ int main(int argc, char * argv[])
     }
   }
 
-  // TODO: create a thread that executes supply_arrivals
+  // create a thread that executes supply_arrivals
   pthread_t supply_thread;
   pthread_create(&supply_thread, NULL, supply_arrivals, NULL);
 
-  // TODO: wait for all threads to finish
+  // wait for all threads to finish
   pthread_join(supply_thread, NULL);
 
-  // I guess just in case we havent hit end time we should right
+  // in case we havent hit end time we should right
   while (get_time_passed() <= END_TIME) {
     usleep(10000);
   }
